@@ -150,6 +150,25 @@ namespace ZFXMath
 			return ( numCrossingEdges & 1 ) ? INSIDE : OUTSIDE;
 		}
 
+		// Returns the signed area of this polygon.
+		// Area is positive if its winding is clockwise, negative otherwise.
+		T ComputeArea() const
+		{
+			T area = (T)0;
+			TVector2D<T> v0 = m_vertex[m_vertexCount - 2];
+			TVector2D<T> v1 = m_vertex[m_vertexCount - 1];
+			for (int v = 0; v < m_vertexCount; v++)
+			{
+				TVector2D<T> v2 = m_vertex[v];
+				area += v1.x * (v0.y - v2.y);
+				v0 = v1;
+				v1 = v2;
+			}
+			area *= (T)0.5;
+
+			return area;
+		}
+
 		T ComputeSqrDistance(const TVector2D<T>& v, /*out*/ bool& pointIsRightOfEdge, /*out*/ TVector2D<T>* closestPoint = NULL) const
 		{
 			T minSqrDistance = numeric_limits<T>::max();
