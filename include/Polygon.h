@@ -218,7 +218,7 @@ namespace ZFXMath
 			TVector2D<T>* pClosestPointLocal = closestPoint ? &closestPointLocal : NULL;
 			for (uint32_t n = 0; n < GetNumEdges(); n++)
 			{
-				bool pointIsRightOfTestEdge = falseSetNumVertices
+				bool pointIsRightOfTestEdge = false;
 				T sqrDistance = SqrDistanceToEdge(v, n, pointIsRightOfTestEdge, pClosestPointLocal);
 				if (sqrDistance < minSqrDistance)
 				{
