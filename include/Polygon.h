@@ -20,47 +20,81 @@ namespace ZFXMath
 			T			 extent;
 		};
 
-		TVector2D<T>*	m_vertex;
-		TVector2D<T>*	m_normal;
-		Edge*			m_edge;
-		int				m_vertexCount;
+		TVector2D<T>*	vertices;
+		TVector2D<T>*	normals;
+		Edge*			edges;
+		uint32_t		numVertices;
+		uint32_t		numVerticesReserved;
 
 	public:
 
-		TPolygon2D() :
-		m_vertex(NULL),
-		m_normal(NULL),
-		m_edge(NULL),
-		m_vertexCount(0)
+		TPolygon2D()
+			: vertices(NULL)
+			, normals(NULL)
+			, edges(NULL)
+			, numVertices(0)
+			, numVerticesReserved(0)
 		{}
+
+		TPolygon2D(TPolygon2D&& polygon)
+			: vertices(polygon.vertices)
+			, normals(polygon.normals)
+			, edges(polygon.edges)
+			, numVertices(polygon.numVertices)
+			, numVerticesReserved(polygon.numVerticesReserved)
+		{
+			polygon.vertices = NULL;
+			polygon.normals = NULL;
+			polygon.edges = NULL;
+		} // copy constructor is implicitly forbidden due to user-defined move constructor (use Clone() instead)
+
+		TPolygon2D<T>& operator= (TPolygon2D<T>&& polygon)
+		{
+			swap((*this), polygon);
+			return *this;
+		} // copy assignment is implicitly forbidden due to user-defined move assignment (use Clone() instead)
 
 		~TPolygon2D() 
 		{
-			delete[] m_vertex;
-			delete[] m_normal;
-			delete[] m_edge;
+			delete[] vertices;
+			delete[] normals;
+			delete[] edges;
+		}
+
+		TPolygon2D<T> Clone() const
+		{
+			TPolygon2D<T> copy;
+			if (vertices) memcpy(copy.vertices, vertices, sizeof(TVector2D<T>) * numVertices);
+			if (normals) memcpy(copy.normals, normals, sizeof(TVector2D<T>) * numVertices);
+			if (edges) memcpy(copy.edges, edges, sizeof(Edge) * GetNumEdges());
+			copy.numVertices = numVertices;
+			copy.numVerticesReserved = numVertices;
+			return copy;
 		}
 
 		void AddVertex( const TVector2D<T>& v )
 		{
-			TVector2D<T>*	oldVertices = m_vertex;
-			m_vertex = new TVector2D<T>[m_vertexCount + 1];
-
-			if( oldVertices )
+			if(numVertices == numVerticesReserved)
 			{
-				memcpy( m_vertex, oldVertices, m_vertexCount * sizeof( TVector2D<T> ) );
-				delete[] oldVertices;
+				numVerticesReserved = Max(10, numVertices * 2);
+				TVector2D<T>* newVertices = new TVector2D<T>[numVerticesReserved];
+				if (vertices)
+				{
+					memcpy(newVertices, vertices, numVertices * sizeof(TVector2D<T>));
+					delete[] vertices;
+				}
+				vertices = newVertices;
 			}
 
-			m_vertex[m_vertexCount] = v;
-			m_vertexCount++;
+			vertices[numVertices] = v;
+			numVertices++;
 		}
 
-		void SetVertex( int index, const TVector2D<T>& v )
+		void SetVertex( uint32_t index, const TVector2D<T>& v )
 		{
-			assert( index >= 0 && index < m_vertexCount );
+			assert( index >= 0 && index < numVertices );
 
-			m_vertex[index] = v;
+			vertices[index] = v;
 		}
 
 		// removes latest vertex if it is equal to the first vertex
@@ -69,66 +103,73 @@ namespace ZFXMath
 		{
 			// "delete" last vertex if it is a duplicate of the first one
 			{
-				const TVector2D<T>& firstVertex = m_vertex[0];
-				const TVector2D<T>& lastVertex = m_vertex[m_vertexCount - 1];
+				const TVector2D<T>& firstVertex = vertices[0];
+				const TVector2D<T>& lastVertex = vertices[numVertices - 1];
 
 				const TVector2D<T> delta = firstVertex - lastVertex;
 
 				if (delta.x == 0 && delta.y == 0)
 				{
-					m_vertexCount--;
+					numVertices--;
 				}
 			}
 
-			// create edges
-			delete[] m_edge;
-			const int numEdges = GetNumEdges();
-			m_edge = new Edge[numEdges];
-			for (int n = 0; n < numEdges; n++)
-			{
-				auto& v0 = m_vertex[n];
-				auto& v1 = m_vertex[(n < m_vertexCount - 1) ? n + 1 : 0];
+			// TODO: recreating all these buffers (edges+normals) should be avoided if possible (see ReserveNumVertices)
 
-				Edge& edge = m_edge[n];
+			// create edges
+			delete[] edges;
+			const uint32_t numEdges = GetNumEdges();
+			edges = new Edge[numEdges];
+			for (uint32_t n = 0; n < numEdges; n++)
+			{
+				auto& v0 = vertices[n];
+				auto& v1 = vertices[(n < numVertices - 1) ? n + 1 : 0];
+
+				Edge& edge = edges[n];
 				edge.center = (v0 + v1) * (T)0.5;
 				edge.direction = v1 - v0;
 				edge.extent = edge.direction.Normalize() * (T)0.5;
-			}
+			}	
 
 			// compute normals
-			delete[] m_normal;
-			const int numNormals = GetNumEdges();
-			m_normal = new TVector2D<double>[m_vertexCount];
-			for (int n = 0; n < m_vertexCount; n++)
+			delete[] normals;
+			const uint32_t numNormals = numVertices;
+			normals = new TVector2D<double>[numVertices];
+			for (uint32_t n = 0; n < numNormals; n++)
 			{
-				auto& e0 = m_edge[(n > 0) ? n - 1 : m_vertexCount - 1];
-				auto& e1 = m_edge[n];
+				auto& e0 = edges[(n > 0) ? n - 1 : numVertices - 1];
+				auto& e1 = edges[n];
 
-				m_normal[n] = -(e0.direction + e1.direction).GetOrthogonal();
-				m_normal[n].Normalize();
+				normals[n] = -(e0.direction + e1.direction).GetOrthogonal();
+				normals[n].Normalize();
 			}
 		}
 
-		void SetNumVertices( int numVertices )
+		// Reserves memory for the given amount of vertices.
+		// Deletes all existing data and the number of vertices is reset to 0.
+		void ReserveNumVertices(uint32_t numVertices)
 		{
-			assert( numVertices > 0 );
+			delete[] vertices;
+			vertices = new TVector2D<T>[numVertices];
+			this->numVerticesReserved = numVertices;
+			this->numVertices = 0;
+		}
 
-			TVector2D<T>*	oldVertices = m_vertex;
-			m_vertex = new TVector2D<T>[numVertices];
-
-			if( oldVertices )
+		// Conditionally reserves memory for the given amount of vertices.
+		// Deletes all existing data and the number of vertices is reset to the given number.
+		void SetNumVertices(uint32_t numVertices)
+		{
+			if (numVertices > numVerticesReserved)
 			{
-				memcpy( m_vertex, oldVertices, m_vertexCount * sizeof( TVector2D<T> ) );
-				delete[] oldVertices;
+				ReserveNumVertices(numVertices);
 			}
-
-			m_vertexCount = numVertices;
+			this->numVertices = numVertices;
 		}
 
 		MathResult Check( const TVector2D<T>& v ) const
 		{
-			int numCrossingEdges = 0;
-			for( int n = 0; n < GetNumEdges(); n++ )
+			uint32_t numCrossingEdges = 0;
+			for(uint32_t n = 0; n < GetNumEdges(); n++ )
 			{
 				TVector2D<T> v0;
 				TVector2D<T> v1;
@@ -155,12 +196,12 @@ namespace ZFXMath
 		T ComputeArea() const
 		{
 			T area = (T)0;
-			TVector2D<T> v0 = m_vertex[m_vertexCount - 2];
-			TVector2D<T> v1 = m_vertex[m_vertexCount - 1];
-			for (int v = 0; v < m_vertexCount; v++)
+			TVector2D<T> v0 = vertices[numVertices - 2];
+			TVector2D<T> v1 = vertices[numVertices - 1];
+			for (uint32_t v = 0; v < numVertices; v++)
 			{
-				TVector2D<T> v2 = m_vertex[v];
-				area += v1.x * (v0.y - v2.y);
+				TVector2D<T> v2 = vertices[v];
+				area += v1.x * (v2.y - v0.y);
 				v0 = v1;
 				v1 = v2;
 			}
@@ -175,9 +216,9 @@ namespace ZFXMath
 			bool minDistancePointIsRightOfEdge = false;
 			TVector2D<T> closestPointLocal;
 			TVector2D<T>* pClosestPointLocal = closestPoint ? &closestPointLocal : NULL;
-			for (int n = 0; n < GetNumEdges(); n++)
+			for (uint32_t n = 0; n < GetNumEdges(); n++)
 			{
-				bool pointIsRightOfTestEdge = false;
+				bool pointIsRightOfTestEdge = falseSetNumVertices
 				T sqrDistance = SqrDistanceToEdge(v, n, pointIsRightOfTestEdge, pClosestPointLocal);
 				if (sqrDistance < minSqrDistance)
 				{
@@ -195,7 +236,7 @@ namespace ZFXMath
 		}
 
 		// assumes that the polygon is convex
-		void Split( int edgeIndex, T lerp, TPolygon2D<T>& newPolygon0, TPolygon2D<T>& newPolygon1 ) const
+		void Split(uint32_t edgeIndex, T lerp, TPolygon2D<T>& newPolygon0, TPolygon2D<T>& newPolygon1 ) const
 		{
 			TVector2D<T> edgeV0;
 			TVector2D<T> edgeV1;
@@ -206,7 +247,7 @@ namespace ZFXMath
 			TVector2D<T> rayDir = ( edgeV0 - edgeV1 ).GetOrthogonal();
 
 			// find the other intersection point
-			for( int n = 0; n < GetNumEdges(); n++ )
+			for(uint32_t n = 0; n < GetNumEdges(); n++ )
 			{
 				if( n == edgeIndex ) continue;
 
@@ -218,19 +259,19 @@ namespace ZFXMath
 				TVector2D<T> intersection;
 				if( IntersectsLineRay( v0, v1, rayOrigin, rayDir, intersection ) )
 				{
-					int minIndex = Min( n, edgeIndex );
-					int maxIndex = Max( n, edgeIndex );
+					uint32_t minIndex = Min( n, edgeIndex );
+					uint32_t maxIndex = Max( n, edgeIndex );
 
 					newPolygon0.SetNumVertices( maxIndex - minIndex + 2 );
 					newPolygon1.SetNumVertices( GetNumVertices() - maxIndex + minIndex + 2 );
 
 					// left polygon
-					int originVertexIndex = minIndex;
-					for( int vi = 0; vi < newPolygon0.GetNumVertices() - 2; vi++ )
+					uint32_t originVertexIndex = minIndex;
+					for(uint32_t vi = 0; vi < newPolygon0.GetNumVertices() - 2; vi++)
 					{
 						originVertexIndex++;
 
-						newPolygon0.SetVertex( vi, m_vertex[originVertexIndex] );
+						newPolygon0.SetVertex( vi, vertices[originVertexIndex] );
 					}
 					newPolygon0.SetVertex( newPolygon0.GetNumVertices() - 2, intersection );
 					newPolygon0.SetVertex( newPolygon0.GetNumVertices() - 1, rayOrigin );
@@ -258,11 +299,11 @@ namespace ZFXMath
 
 					// right polygon
 					originVertexIndex = maxIndex;
-					for( int vi = 0; vi < newPolygon1.GetNumVertices() - 2; vi++ )
+					for(uint32_t vi = 0; vi < newPolygon1.GetNumVertices() - 2; vi++)
 					{
 						originVertexIndex = ( originVertexIndex + 1 ) % GetNumVertices();
 
-						newPolygon1.SetVertex( vi, m_vertex[originVertexIndex] );
+						newPolygon1.SetVertex( vi, vertices[originVertexIndex] );
 					}
 					newPolygon1.SetVertex( newPolygon1.GetNumVertices() - 2, rayOrigin );
 					newPolygon1.SetVertex( newPolygon1.GetNumVertices() - 1, intersection );
@@ -293,50 +334,50 @@ namespace ZFXMath
 			}
 		}
 
-		int GetNumEdges() const
+		uint32_t GetNumEdges() const
 		{
-			return m_vertexCount;
+			return numVertices;
 		}
 
-		int GetNumVertices() const
+		uint32_t GetNumVertices() const
 		{
-			return m_vertexCount;
+			return numVertices;
 		}
 
 		const TVector2D<T>* GetVertices() const
 		{
-			return m_vertex;
+			return vertices;
 		}
 
 		TVector2D<T>* GetVertices()
 		{
-			return m_vertex;
+			return vertices;
 		}
 
-		const TVector2D<T>& GetVertex(int index) const
+		const TVector2D<T>& GetVertex(uint32_t index) const
 		{
-			assert( index >= 0 && index < m_vertexCount );
-			return m_vertex[index];
+			assert( index >= 0 && index < numVertices );
+			return vertices[index];
 		}
 
-		TVector2D<T>& GetVertex(int index)
+		TVector2D<T>& GetVertex(uint32_t index)
 		{
-			assert( index >= 0 && index < m_vertexCount );
-			return m_vertex[index];
+			assert( index >= 0 && index < numVertices );
+			return vertices[index];
 		}
 
-		void GetEdge(int index, TVector2D<T>& v0, TVector2D<T>& v1) const
+		void GetEdge(uint32_t index, TVector2D<T>& v0, TVector2D<T>& v1) const
 		{
 			assert( index >= 0 && index < GetNumEdges() );
-			v0 = m_vertex[index];
-			v1 = ( index < m_vertexCount - 1 ) ? m_vertex[index + 1] : m_vertex[0];
+			v0 = vertices[index];
+			v1 = ( index < numVertices - 1 ) ? vertices[index + 1] : vertices[0];
 		}
 
 	private:
 
-		double SqrDistanceToEdge(const TVector2D<T>& point, int edgeIndex, /*out*/ bool& pointIsRightOfEdge, /*out*/ TVector2D<T>* closestPoint = NULL) const
+		double SqrDistanceToEdge(const TVector2D<T>& point, uint32_t edgeIndex, /*out*/ bool& pointIsRightOfEdge, /*out*/ TVector2D<T>* closestPoint = NULL) const
 		{
-			const Edge& edge = m_edge[edgeIndex];
+			const Edge& edge = edges[edgeIndex];
 
 			TVector2D<T> diff = point - edge.center;
 			T segmentParameter = edge.direction.DotProduct(diff);
@@ -352,15 +393,15 @@ namespace ZFXMath
 				else
 				{
 					// Vertex 1 of Edge
-					segmentClosestPoint = m_vertex[(edgeIndex < m_vertexCount - 1) ? edgeIndex + 1 : 0];
-					segmentClosestPointNormal = m_normal[(edgeIndex < m_vertexCount - 1) ? edgeIndex + 1 : 0];
+					segmentClosestPoint = vertices[(edgeIndex < numVertices - 1) ? edgeIndex + 1 : 0];
+					segmentClosestPointNormal = normals[(edgeIndex < numVertices - 1) ? edgeIndex + 1 : 0];
 				}
 			}
 			else
 			{
 				// Vertex 0 of Edge
-				segmentClosestPoint = m_vertex[edgeIndex];
-				segmentClosestPointNormal = m_normal[edgeIndex];
+				segmentClosestPoint = vertices[edgeIndex];
+				segmentClosestPointNormal = normals[edgeIndex];
 			}
 
 			diff = point - segmentClosestPoint;
