@@ -50,7 +50,14 @@ namespace ZFXMath
 
 		TPolygon2D<T>& operator= (TPolygon2D<T>&& polygon)
 		{
-			swap((*this), polygon);
+			this->vertices = polygon.vertices;
+			this->normals = polygon.normals;
+			this->edges = polygon.edges;
+			this->numVertices = polygon.numVertices;
+			this->numVerticesReserved = polygon.numVerticesReserved;
+			polygon.vertices = NULL;
+			polygon.normals = NULL;
+			polygon.edges = NULL;
 			return *this;
 		} // copy assignment is implicitly forbidden due to user-defined move assignment (use Clone() instead)
 
@@ -61,14 +68,21 @@ namespace ZFXMath
 			delete[] edges;
 		}
 
-		TPolygon2D<T> Clone() const
+		template<typename TargetType = T>
+		TPolygon2D<TargetType> Clone(TargetType scale = (TargetType)1.0) const
 		{
-			TPolygon2D<T> copy;
-			if (vertices) memcpy(copy.vertices, vertices, sizeof(TVector2D<T>) * numVertices);
-			if (normals) memcpy(copy.normals, normals, sizeof(TVector2D<T>) * numVertices);
-			if (edges) memcpy(copy.edges, edges, sizeof(Edge) * GetNumEdges());
-			copy.numVertices = numVertices;
-			copy.numVerticesReserved = numVertices;
+			TPolygon2D<TargetType> copy;
+			copy.SetNumVertices(numVertices);
+			for (uint32_t v = 0; v < copy.GetNumVertices(); v++)
+			{
+				copy.SetVertex(v, TVector2D<TargetType>(
+					vertices[v].x * scale,
+					vertices[v].y * scale));
+			}
+			if (normals)
+			{
+				copy.CloseRing();
+			}
 			return copy;
 		}
 
@@ -76,7 +90,7 @@ namespace ZFXMath
 		{
 			if(numVertices == numVerticesReserved)
 			{
-				numVerticesReserved = Max(10, numVertices * 2);
+				numVerticesReserved = Max<uint32_t>(10, numVertices * 2);
 				TVector2D<T>* newVertices = new TVector2D<T>[numVerticesReserved];
 				if (vertices)
 				{
@@ -192,20 +206,21 @@ namespace ZFXMath
 		}
 
 		// Returns the signed area of this polygon.
-		// Area is positive if its winding is clockwise, negative otherwise.
-		T ComputeArea() const
+		// Area is positive if its winding order is clockwise (rightwards+;downwards+), negative otherwise.
+		template<typename AreaType = T>
+		AreaType ComputeArea() const
 		{
-			T area = (T)0;
+			AreaType area = (AreaType)0;
 			TVector2D<T> v0 = vertices[numVertices - 2];
 			TVector2D<T> v1 = vertices[numVertices - 1];
 			for (uint32_t v = 0; v < numVertices; v++)
 			{
 				TVector2D<T> v2 = vertices[v];
-				area += v1.x * (v2.y - v0.y);
+				area += (AreaType)(v1.x * (v2.y - v0.y));
 				v0 = v1;
 				v1 = v2;
 			}
-			area *= (T)0.5;
+			area /= (AreaType)2;
 
 			return area;
 		}
