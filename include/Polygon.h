@@ -2,6 +2,8 @@
 #ifndef _ZFXMATH_INCLUDE_POLYGON_H_
 #define _ZFXMATH_INCLUDE_POLYGON_H_
 
+#include <limits>
+
 #include "Geometry.h"
 
 namespace ZFXMath
@@ -227,7 +229,7 @@ namespace ZFXMath
 
 		T ComputeSqrDistance(const TVector2D<T>& v, /*out*/ bool& pointIsRightOfEdge, /*out*/ TVector2D<T>* closestPoint = NULL) const
 		{
-			T minSqrDistance = numeric_limits<T>::max();
+			T minSqrDistance = std::numeric_limits<T>::max();
 			bool minDistancePointIsRightOfEdge = false;
 			TVector2D<T> closestPointLocal;
 			TVector2D<T>* pClosestPointLocal = closestPoint ? &closestPointLocal : NULL;

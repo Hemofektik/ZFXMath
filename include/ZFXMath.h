@@ -33,6 +33,8 @@
 #define LITTLE_ENDIAN 1
 #endif
 
+#include <math.h>
+
 #include "ZFXTypes.h"
 
 #include "BasicMath.h"
