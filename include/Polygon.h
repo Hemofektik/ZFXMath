@@ -187,18 +187,11 @@ namespace ZFXMath
 			uint32_t numCrossingEdges = 0;
 			for(uint32_t n = 0; n < GetNumEdges(); n++ )
 			{
-				TVector2D<T> v0;
-				TVector2D<T> v1;
+				const auto& v0 = vertices[n];
+				const auto& v1 = (n < numVertices - 1) ? vertices[n + 1] : vertices[0];
 
-				GetEdge( n, v0, v1 );
-				
-				TVector2D<T> vMin = v0;
-				TVector2D<T> vMax = v1;
-
-				vMin.Min( v1 );
-				vMax.Max( v0 );
-
-				if( v.x > vMin.x && v.y > vMin.y && v.y < vMax.y )
+				if (((v0.y > v.y) != (v1.y > v.y)) &&
+					(v.x < (v1.x - v0.x) * (v.y - v0.y) / (v1.y - v0.y) + v0.x))
 				{
 					numCrossingEdges++;
 				}
@@ -227,20 +220,20 @@ namespace ZFXMath
 			return area;
 		}
 
-		T ComputeSqrDistance(const TVector2D<T>& v, /*out*/ bool& pointIsRightOfEdge, /*out*/ TVector2D<T>* closestPoint = NULL) const
+		T ComputeSqrDistance(const TVector2D<T>& v, /*out*/ bool& isInside, /*out*/ TVector2D<T>* closestPoint = NULL) const
 		{
 			T minSqrDistance = std::numeric_limits<T>::max();
-			bool minDistancePointIsRightOfEdge = false;
+			int numInterSections = 0;
 			TVector2D<T> closestPointLocal;
 			TVector2D<T>* pClosestPointLocal = closestPoint ? &closestPointLocal : NULL;
 			for (uint32_t n = 0; n < GetNumEdges(); n++)
 			{
-				bool pointIsRightOfTestEdge = false;
-				T sqrDistance = SqrDistanceToEdge(v, n, pointIsRightOfTestEdge, pClosestPointLocal);
+				bool countAsIntersection = false;
+				T sqrDistance = SqrDistanceToEdge(v, n, countAsIntersection, pClosestPointLocal);
+				numInterSections += countAsIntersection ? 1 : 0;
 				if (sqrDistance < minSqrDistance)
 				{
 					minSqrDistance = sqrDistance;
-					minDistancePointIsRightOfEdge = pointIsRightOfTestEdge;
 					if (closestPoint)
 					{
 						*closestPoint = closestPointLocal;
@@ -248,7 +241,7 @@ namespace ZFXMath
 				}
 			}
 
-			pointIsRightOfEdge = minDistancePointIsRightOfEdge;
+			isInside = numInterSections & 1;
 			return minSqrDistance;
 		}
 
@@ -392,39 +385,43 @@ namespace ZFXMath
 
 	private:
 
-		double SqrDistanceToEdge(const TVector2D<T>& point, uint32_t edgeIndex, /*out*/ bool& pointIsRightOfEdge, /*out*/ TVector2D<T>* closestPoint = NULL) const
+		double SqrDistanceToEdge(const TVector2D<T>& point, uint32_t edgeIndex, /*out*/ bool& countAsIntersection, /*out*/ TVector2D<T>* closestPoint = NULL) const
 		{
 			const Edge& edge = edges[edgeIndex];
 
 			TVector2D<T> diff = point - edge.center;
 			T segmentParameter = edge.direction.DotProduct(diff);
 			TVector2D<T> segmentClosestPoint;
-			TVector2D<T> segmentClosestPointNormal;
 			if (-edge.extent < segmentParameter)
 			{
 				if (segmentParameter < edge.extent)
 				{
 					segmentClosestPoint = edge.center + edge.direction * segmentParameter;
-					segmentClosestPointNormal = -edge.direction.GetOrthogonal();
 				}
 				else
 				{
 					// Vertex 1 of Edge
 					segmentClosestPoint = vertices[(edgeIndex < numVertices - 1) ? edgeIndex + 1 : 0];
-					segmentClosestPointNormal = normals[(edgeIndex < numVertices - 1) ? edgeIndex + 1 : 0];
 				}
 			}
 			else
 			{
 				// Vertex 0 of Edge
 				segmentClosestPoint = vertices[edgeIndex];
-				segmentClosestPointNormal = normals[edgeIndex];
 			}
 
 			diff = point - segmentClosestPoint;
 			T sqrDistance = diff.DotProduct(diff);
 
-			pointIsRightOfEdge = segmentClosestPointNormal.DotProduct(diff) < 0.0;
+			const auto& v0 = vertices[edgeIndex];
+			const auto& v1 = (edgeIndex < numVertices - 1) ? vertices[edgeIndex + 1] : vertices[0];
+
+			if (((v0.y > point.y) != (v1.y > point.y)) &&
+				(point.x < (v1.x - v0.x) * (point.y - v0.y) / (v1.y - v0.y) + v0.x))
+			{
+				countAsIntersection = true;
+			}
+
 			if (closestPoint)
 			{
 				*closestPoint = segmentClosestPoint;
